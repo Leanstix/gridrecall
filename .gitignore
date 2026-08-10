@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+dist/
+build/
+
+# Node
+node_modules/
+apps/dashboard/dist/
+*.tsbuildinfo
+apps/dashboard/vite.config.js
+apps/dashboard/vite.config.d.ts
+
+# Environment and local tooling
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+coverage.xml
+.coverage
+htmlcov/
