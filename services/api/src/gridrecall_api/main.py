@@ -11,7 +11,7 @@ from gridrecall_api.service import GridRecallDemoService, build_demo_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.demo = build_demo_service()
+    app.state.demo = build_demo_service(settings)
     yield
 
 

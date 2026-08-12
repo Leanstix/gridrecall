@@ -90,6 +90,8 @@ class Recommendation(BaseModel):
     escalation_condition: str
     evidence: list[MemoryEvidence] = Field(default_factory=list)
     avoided_actions: list[ActionType] = Field(default_factory=list)
+    reasoning_provider: str = "case-based-local"
+    model_id: str | None = None
 
 
 class IncidentMemory(BaseModel):

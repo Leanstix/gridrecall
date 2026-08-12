@@ -43,7 +43,10 @@ The production design uses:
 - **FastAPI** for workflow, policy enforcement and transactional writes.
 - **React + TypeScript** for the operations dashboard.
 
-The current branch deliberately uses an in-memory repository and stable local embeddings so anyone can run and verify the core behavior before cloud credentials are configured. Production adapters are the next milestone.
+The default local mode uses an in-memory repository and stable hash embeddings so anyone can
+replay the core behavior without credentials. When `BEDROCK_REASONING_MODEL_ID` is configured, the
+same workflow uses Amazon Nova through the Converse API and Amazon Titan Text Embeddings V2 while
+retaining deterministic policy enforcement.
 
 ## Repository layout
 
@@ -121,9 +124,10 @@ See [architecture details](docs/architecture.md) and the [three-minute demo blue
 - [x] Hybrid local memory ranking and policy engine
 - [x] Operator dashboard and replayable demonstration
 - [x] CockroachDB relational/vector schema
+- [x] Titan embedding adapter with normalized 1024-dimensional vectors
+- [x] Bedrock Nova structured-recommendation adapter
 - [ ] CockroachDB repository and transaction adapter
-- [ ] Titan embedding adapter and production vector queries
-- [ ] Bedrock structured-recommendation adapter
+- [ ] Production CockroachDB vector queries
 - [ ] Managed MCP read-only investigation tools
 - [ ] AWS Lambda/API Gateway and S3/CloudFront deployment
 - [ ] Failure-resume, audit and integration tests
