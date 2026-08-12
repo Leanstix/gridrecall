@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS incident_memories (
 );
 
 CREATE VECTOR INDEX IF NOT EXISTS memories_embedding_idx
-    ON incident_memories (embedding);
+    ON incident_memories (asset_model, fault_type, embedding vector_cosine_ops);
 
 CREATE TABLE IF NOT EXISTS memory_evidence (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

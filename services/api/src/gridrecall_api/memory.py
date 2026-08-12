@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Protocol
 
 from gridrecall_api.embeddings import EmbeddingProvider, cosine_similarity
 from gridrecall_api.schemas import IncidentContext, IncidentMemory, MemoryEvidence
@@ -20,6 +21,10 @@ class RankedMemory:
             failed_actions=self.memory.failed_actions,
             summary=self.memory.resolution_summary,
         )
+
+
+class MemoryRetriever(Protocol):
+    def retrieve(self, context: IncidentContext, limit: int = 3) -> list[RankedMemory]: ...
 
 
 class InMemoryOperationalMemory:

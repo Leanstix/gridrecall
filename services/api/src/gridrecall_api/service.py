@@ -7,7 +7,7 @@ from gridrecall_api.embeddings import (
     EmbeddingProvider,
     LocalHashEmbeddingProvider,
 )
-from gridrecall_api.memory import InMemoryOperationalMemory
+from gridrecall_api.memory import InMemoryOperationalMemory, MemoryRetriever
 from gridrecall_api.policy import SafetyPolicyEngine
 from gridrecall_api.reasoning import (
     BedrockNovaReasoner,
@@ -38,11 +38,13 @@ class GridRecallDemoService:
         self,
         embeddings: EmbeddingProvider | None = None,
         reasoner: RecommendationReasoner | None = None,
+        retriever: MemoryRetriever | None = None,
     ) -> None:
         self._lock = RLock()
         self.embeddings = embeddings or LocalHashEmbeddingProvider()
         self.reasoner = reasoner or CaseBasedReasoner()
         self.memory = InMemoryOperationalMemory(self.embeddings)
+        self.retriever = retriever or self.memory
         self.policy = SafetyPolicyEngine()
         self.sites = seed_sites()
         self.incidents: list[Incident] = []
@@ -64,7 +66,7 @@ class GridRecallDemoService:
         context: IncidentContext,
         qualification: str = "field_technician",
     ) -> Recommendation:
-        evidence = self.memory.retrieve(context)
+        evidence = self.retriever.retrieve(context)
         influential = [item for item in evidence if item.influence_score >= 0.55]
         if influential:
             candidate_action = influential[0].memory.successful_action
