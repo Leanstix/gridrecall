@@ -16,6 +16,7 @@ class ReasoningResult:
     confidence: float
     provider: str
     model_id: str | None = None
+    managed_context_used: bool = False
 
 
 class RecommendationReasoner(Protocol):
@@ -25,6 +26,7 @@ class RecommendationReasoner(Protocol):
         evidence: list[RankedMemory],
         candidate_action: ActionType,
         avoided_actions: list[ActionType],
+        structured_context: Any | None = None,
     ) -> ReasoningResult: ...
 
 
@@ -37,6 +39,7 @@ class CaseBasedReasoner:
         evidence: list[RankedMemory],
         candidate_action: ActionType,
         avoided_actions: list[ActionType],
+        structured_context: Any | None = None,
     ) -> ReasoningResult:
         if evidence:
             explanation = (
@@ -88,6 +91,7 @@ valid JSON with recommended_action, reasoning, and confidence (a number from 0 t
         evidence: list[RankedMemory],
         candidate_action: ActionType,
         avoided_actions: list[ActionType],
+        structured_context: Any | None = None,
     ) -> ReasoningResult:
         candidate_actions = [candidate_action.value, ActionType.ESCALATE_ENGINEER.value]
         evidence_payload = [
@@ -115,6 +119,7 @@ valid JSON with recommended_action, reasoning, and confidence (a number from 0 t
             "candidate_actions": list(dict.fromkeys(candidate_actions)),
             "retrieval_candidate": candidate_action.value,
             "actions_to_avoid": [action.value for action in avoided_actions],
+            "managed_mcp_context": structured_context,
         }
         response = self._client.converse(
             modelId=self.model_id,
@@ -122,7 +127,9 @@ valid JSON with recommended_action, reasoning, and confidence (a number from 0 t
             messages=[
                 {
                     "role": "user",
-                    "content": [{"text": json.dumps(prompt, separators=(",", ":"))}],
+                    "content": [
+                        {"text": json.dumps(prompt, separators=(",", ":"), default=str)}
+                    ],
                 }
             ],
             inferenceConfig={"maxTokens": 500, "temperature": 0, "topP": 0.9},
@@ -143,6 +150,7 @@ valid JSON with recommended_action, reasoning, and confidence (a number from 0 t
             confidence=parsed.confidence,
             provider="amazon-bedrock",
             model_id=self.model_id,
+            managed_context_used=structured_context is not None,
         )
 
     @staticmethod

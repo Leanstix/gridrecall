@@ -10,7 +10,8 @@ The prototype is built for the CockroachDB × AWS Agentic AI Hackathon. It demon
 
 ## What the current milestone proves
 
-The repository contains a credential-free two-incident demonstration:
+The repository contains both a credential-free local replay and a production-backed two-incident
+demonstration:
 
 1. An inverter at Ajegunle overheats and loses output.
 2. With no relevant memory, GridRecall begins with the conservative reset playbook.
@@ -43,10 +44,11 @@ The production design uses:
 - **FastAPI** for workflow, policy enforcement and transactional writes.
 - **React + TypeScript** for the operations dashboard.
 
-The default local mode uses an in-memory repository and stable hash embeddings so anyone can
-replay the core behavior without credentials. When `BEDROCK_REASONING_MODEL_ID` is configured, the
-same workflow uses Amazon Nova through the Converse API and Amazon Titan Text Embeddings V2 while
-retaining deterministic policy enforcement.
+The default local mode uses in-memory state and stable hash embeddings. Production mode activates
+only when its database, Bedrock and Managed MCP settings are all present. It then writes the complete
+incident-to-outcome chain transactionally, retrieves memories through CockroachDB's cosine vector
+index, reads additional structured context through Managed MCP and asks Nova for a constrained
+recommendation before deterministic safety enforcement.
 
 ## Repository layout
 
@@ -111,6 +113,8 @@ make web-build
 
 The tests verify retrieval ranking, policy enforcement, reset idempotency and the central acceptance criterion: the second incident uses outcome memory and does not repeat the failed reset.
 
+For the real cloud checkpoint, follow the [production integration test](docs/production-integration.md).
+
 ## Safety
 
 GridRecall does not control electrical equipment. Recommendations are restricted to an approved action catalogue, checked against technician qualifications and presented for human approval. Unknown or dangerous conditions are escalated.
@@ -126,11 +130,12 @@ See [architecture details](docs/architecture.md) and the [three-minute demo blue
 - [x] CockroachDB relational/vector schema
 - [x] Titan embedding adapter with normalized 1024-dimensional vectors
 - [x] Bedrock Nova structured-recommendation adapter
-- [ ] CockroachDB repository and transaction adapter
-- [ ] Production CockroachDB vector queries
-- [ ] Managed MCP read-only investigation tools
+- [x] CockroachDB repository and retryable transaction adapter
+- [x] Production CockroachDB cosine-vector queries
+- [x] Managed MCP read-only investigation tools
+- [x] Checksum-tracked migrations and production integration verifier
 - [ ] AWS Lambda/API Gateway and S3/CloudFront deployment
-- [ ] Failure-resume, audit and integration tests
+- [ ] Failure-resume and audit-log hardening
 
 ## Licence
 

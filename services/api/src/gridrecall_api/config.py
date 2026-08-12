@@ -24,7 +24,11 @@ class Settings(BaseSettings):
 
     @property
     def demo_mode(self) -> bool:
-        return not all(
+        return not self.production_ready
+
+    @property
+    def production_ready(self) -> bool:
+        return all(
             [
                 self.database_url,
                 self.bedrock_reasoning_model_id,

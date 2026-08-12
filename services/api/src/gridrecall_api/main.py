@@ -12,7 +12,11 @@ from gridrecall_api.service import GridRecallDemoService, build_demo_service
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.demo = build_demo_service(settings)
-    yield
+    app.state.demo.open()
+    try:
+        yield
+    finally:
+        app.state.demo.close()
 
 
 app = FastAPI(
@@ -38,7 +42,16 @@ def demo_service(request: Request) -> GridRecallDemoService:
 
 @app.get("/health")
 def health() -> dict[str, str | bool]:
-    return {"status": "ok", "version": __version__, "demo_mode": settings.demo_mode}
+    return {
+        "status": "ok",
+        "version": __version__,
+        "demo_mode": settings.demo_mode,
+        "bedrock_enabled": bool(settings.bedrock_reasoning_model_id),
+        "cockroach_enabled": bool(settings.database_url),
+        "managed_mcp_enabled": bool(
+            settings.cockroach_mcp_cluster_id and settings.cockroach_mcp_api_key
+        ),
+    }
 
 
 @app.get("/api/demo", response_model=DemoState)

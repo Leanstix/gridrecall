@@ -1,18 +1,27 @@
 from threading import RLock
+from typing import Any, Protocol
 from uuid import uuid4
 
+from gridrecall_api.cockroach_memory import CockroachVectorMemory
 from gridrecall_api.config import Settings, get_settings
+from gridrecall_api.database import CockroachDatabase
 from gridrecall_api.embeddings import (
     BedrockTitanEmbeddingProvider,
     EmbeddingProvider,
     LocalHashEmbeddingProvider,
 )
-from gridrecall_api.memory import InMemoryOperationalMemory
+from gridrecall_api.mcp_client import CockroachManagedMcpClient
+from gridrecall_api.memory import InMemoryOperationalMemory, MemoryRetriever
 from gridrecall_api.policy import SafetyPolicyEngine
 from gridrecall_api.reasoning import (
     BedrockNovaReasoner,
     CaseBasedReasoner,
     RecommendationReasoner,
+)
+from gridrecall_api.repository import (
+    CockroachResolutionRepository,
+    NullResolutionRepository,
+    ResolutionRepository,
 )
 from gridrecall_api.schemas import (
     ActionType,
@@ -33,16 +42,28 @@ ACTION_TITLES = {
 }
 
 
+class InvestigationContextProvider(Protocol):
+    def investigation_context(self, context: IncidentContext, limit: int = 10) -> Any: ...
+
+
 class GridRecallDemoService:
     def __init__(
         self,
         embeddings: EmbeddingProvider | None = None,
         reasoner: RecommendationReasoner | None = None,
+        retriever: MemoryRetriever | None = None,
+        resolution_repository: ResolutionRepository | None = None,
+        context_provider: InvestigationContextProvider | None = None,
+        database: CockroachDatabase | None = None,
     ) -> None:
         self._lock = RLock()
         self.embeddings = embeddings or LocalHashEmbeddingProvider()
         self.reasoner = reasoner or CaseBasedReasoner()
         self.memory = InMemoryOperationalMemory(self.embeddings)
+        self.retriever = retriever or self.memory
+        self.resolution_repository = resolution_repository or NullResolutionRepository()
+        self.context_provider = context_provider
+        self.database = database
         self.policy = SafetyPolicyEngine()
         self.sites = seed_sites()
         self.incidents: list[Incident] = []
@@ -59,12 +80,20 @@ class GridRecallDemoService:
             self.message = "Demo reset. No operational incident memories exist yet."
             return self.state()
 
+    def open(self) -> None:
+        if self.database is not None:
+            self.database.open()
+
+    def close(self) -> None:
+        if self.database is not None:
+            self.database.close()
+
     def recommend(
         self,
         context: IncidentContext,
         qualification: str = "field_technician",
     ) -> Recommendation:
-        evidence = self.memory.retrieve(context)
+        evidence = self.retriever.retrieve(context)
         influential = [item for item in evidence if item.influence_score >= 0.55]
         if influential:
             candidate_action = influential[0].memory.successful_action
@@ -80,11 +109,17 @@ class GridRecallDemoService:
             candidate_action = ActionType.APPROVED_INVERTER_RESET
             avoided = []
 
+        structured_context = (
+            self.context_provider.investigation_context(context)
+            if self.context_provider is not None
+            else None
+        )
         reasoning = self.reasoner.recommend(
             context=context,
             evidence=influential,
             candidate_action=candidate_action,
             avoided_actions=avoided,
+            structured_context=structured_context,
         )
         action = reasoning.action
 
@@ -107,6 +142,7 @@ class GridRecallDemoService:
             avoided_actions=avoided,
             reasoning_provider=reasoning.provider,
             model_id=reasoning.model_id,
+            managed_context_used=reasoning.managed_context_used,
         )
 
     def run_first_incident(self) -> DemoState:
@@ -161,8 +197,9 @@ class GridRecallDemoService:
                     "restored safe temperature and normal power output."
                 ),
             )
-            self.memory.remember(memory)
             site.status = "restored"
+            self.resolution_repository.record_resolution(site, incident, memory)
+            self.memory.remember(memory)
             self.phase = "first_resolved"
             self.message = (
                 "Ajegunle restored. GridRecall stored the failed reset and successful ventilation "
@@ -198,24 +235,24 @@ class GridRecallDemoService:
                 unavailable_energy_avoided_kwh=31.4,
             )
             self.incidents.append(incident)
-            self.memory.remember(
-                IncidentMemory(
-                    source_incident_id=incident.id,
-                    site_name=site.name,
-                    inverter_model=context.inverter_model,
-                    fault_type=context.fault_type,
-                    symptoms=context.symptoms,
-                    search_text=context.search_text,
-                    embedding=self.embeddings.embed(context.search_text),
-                    attempts=[attempt],
-                    outcome_score=0.94,
-                    resolution_summary=(
-                        "Cross-site memory prioritised ventilation inspection, avoiding a failed "
-                        "reset and restoring output in one diagnostic step."
-                    ),
-                )
+            memory = IncidentMemory(
+                source_incident_id=incident.id,
+                site_name=site.name,
+                inverter_model=context.inverter_model,
+                fault_type=context.fault_type,
+                symptoms=context.symptoms,
+                search_text=context.search_text,
+                embedding=self.embeddings.embed(context.search_text),
+                attempts=[attempt],
+                outcome_score=0.94,
+                resolution_summary=(
+                    "Cross-site memory prioritised ventilation inspection, avoiding a failed "
+                    "reset and restoring output in one diagnostic step."
+                ),
             )
             site.status = "restored"
+            self.resolution_repository.record_resolution(site, incident, memory)
+            self.memory.remember(memory)
             self.phase = "memory_proven"
             self.message = (
                 "Kura restored in one step. Ajegunle's outcome memory changed the recommendation "
@@ -254,7 +291,7 @@ class GridRecallDemoService:
 
 def build_demo_service(settings: Settings | None = None) -> GridRecallDemoService:
     settings = settings or get_settings()
-    if not settings.bedrock_reasoning_model_id:
+    if not settings.production_ready:
         return GridRecallDemoService()
     embeddings = BedrockTitanEmbeddingProvider(
         region=settings.aws_region,
@@ -265,4 +302,19 @@ def build_demo_service(settings: Settings | None = None) -> GridRecallDemoServic
         region=settings.aws_region,
         model_id=settings.bedrock_reasoning_model_id,
     )
-    return GridRecallDemoService(embeddings=embeddings, reasoner=reasoner)
+    database = CockroachDatabase(settings.database_url or "")
+    repository = CockroachResolutionRepository(database)
+    retriever = CockroachVectorMemory(database, embeddings)
+    context_provider = CockroachManagedMcpClient(
+        settings.cockroach_mcp_url,
+        settings.cockroach_mcp_cluster_id or "",
+        settings.cockroach_mcp_api_key or "",
+    )
+    return GridRecallDemoService(
+        embeddings=embeddings,
+        reasoner=reasoner,
+        retriever=retriever,
+        resolution_repository=repository,
+        context_provider=context_provider,
+        database=database,
+    )
