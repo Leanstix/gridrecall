@@ -1,10 +1,11 @@
 import hashlib
-import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import psycopg
+
+from gridrecall_api.config import get_settings
 
 
 def apply_migrations(
@@ -52,8 +53,9 @@ def apply_migrations(
 
 def main() -> None:
     project_root = Path(__file__).resolve().parents[4]
+    settings = get_settings()
     applied = apply_migrations(
-        os.environ.get("DATABASE_URL", ""),
+        settings.database_url or "",
         project_root / "migrations",
     )
     print("Applied migrations:", ", ".join(applied) if applied else "none")
