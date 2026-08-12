@@ -1,4 +1,4 @@
-.PHONY: api-install api-dev api-test api-lint web-install web-dev web-build check
+.PHONY: api-install api-dev api-test api-lint db-migrate verify-production web-install web-dev web-build check
 
 api-install:
 	python -m pip install -e "services/api[dev]"
@@ -11,6 +11,12 @@ api-test:
 
 api-lint:
 	ruff check services/api
+
+db-migrate:
+	python -m gridrecall_api.migrations
+
+verify-production:
+	python -m gridrecall_api.verify_production
 
 web-install:
 	npm --prefix apps/dashboard install

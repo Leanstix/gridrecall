@@ -1,6 +1,8 @@
 -- GridRecall operational-memory schema for CockroachDB 25.4+.
 -- Titan Text Embeddings V2 produces 1024-dimensional vectors by default.
 
+SET CLUSTER SETTING feature.vector_index.enabled = true;
+
 CREATE TABLE IF NOT EXISTS sites (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name STRING NOT NULL,
