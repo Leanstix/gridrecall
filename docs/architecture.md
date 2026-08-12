@@ -48,7 +48,17 @@ The production retriever ranks safe, resolved cases using:
 - Symptom overlap.
 - Verified outcome quality.
 
-The local adapter uses stable hash embeddings so the demonstration and tests need no credentials. The production adapter will use Amazon Titan Text Embeddings V2 and CockroachDB's cosine-distance operator.
+The local adapter uses stable hash embeddings so the demonstration and tests need no credentials.
+The Bedrock adapter invokes Amazon Titan Text Embeddings V2 for normalized 1024-dimensional
+vectors. CockroachDB's cosine-distance operator will perform production retrieval.
+
+## Bedrock reasoning contract
+
+Amazon Nova receives the current incident, telemetry snapshot, retrieved outcome memories, the
+retrieval engine's candidate action and actions known to have failed. It must return JSON containing
+an action, explanation and numeric confidence. The backend validates that JSON and rejects an action
+unless it is the retrieval candidate or escalation. The deterministic policy engine then validates
+qualification and requires human approval; model output cannot waive that requirement.
 
 ## Safety boundary
 

@@ -1,9 +1,19 @@
 from threading import RLock
 from uuid import uuid4
 
-from gridrecall_api.embeddings import LocalHashEmbeddingProvider
+from gridrecall_api.config import Settings, get_settings
+from gridrecall_api.embeddings import (
+    BedrockTitanEmbeddingProvider,
+    EmbeddingProvider,
+    LocalHashEmbeddingProvider,
+)
 from gridrecall_api.memory import InMemoryOperationalMemory
 from gridrecall_api.policy import SafetyPolicyEngine
+from gridrecall_api.reasoning import (
+    BedrockNovaReasoner,
+    CaseBasedReasoner,
+    RecommendationReasoner,
+)
 from gridrecall_api.schemas import (
     ActionType,
     DemoMetrics,
@@ -24,9 +34,14 @@ ACTION_TITLES = {
 
 
 class GridRecallDemoService:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        embeddings: EmbeddingProvider | None = None,
+        reasoner: RecommendationReasoner | None = None,
+    ) -> None:
         self._lock = RLock()
-        self.embeddings = LocalHashEmbeddingProvider()
+        self.embeddings = embeddings or LocalHashEmbeddingProvider()
+        self.reasoner = reasoner or CaseBasedReasoner()
         self.memory = InMemoryOperationalMemory(self.embeddings)
         self.policy = SafetyPolicyEngine()
         self.sites = seed_sites()
@@ -52,29 +67,26 @@ class GridRecallDemoService:
         evidence = self.memory.retrieve(context)
         influential = [item for item in evidence if item.influence_score >= 0.55]
         if influential:
-            action = influential[0].memory.successful_action
+            candidate_action = influential[0].memory.successful_action
             avoided = list(
                 dict.fromkeys(
                     failed
                     for item in influential
                     for failed in item.memory.failed_actions
-                    if failed != action
+                    if failed != candidate_action
                 )
             )
-            explanation = (
-                f"A similar {context.inverter_model} incident at "
-                f"{influential[0].memory.site_name} was resolved with this action. "
-                "Its failed attempts were demoted using the recorded outcome."
-            )
-            confidence = min(0.96, 0.55 + influential[0].influence_score * 0.4)
         else:
-            action = ActionType.APPROVED_INVERTER_RESET
+            candidate_action = ActionType.APPROVED_INVERTER_RESET
             avoided = []
-            explanation = (
-                "No sufficiently relevant successful incident memory exists, so GridRecall "
-                "starts with the conservative approved playbook."
-            )
-            confidence = 0.61
+
+        reasoning = self.reasoner.recommend(
+            context=context,
+            evidence=influential,
+            candidate_action=candidate_action,
+            avoided_actions=avoided,
+        )
+        action = reasoning.action
 
         policy = self.policy.validate(action, qualification)
         if not policy.allowed:
@@ -84,8 +96,8 @@ class GridRecallDemoService:
         return Recommendation(
             action=action,
             title=ACTION_TITLES.get(action, action.value.replace("_", " ").title()),
-            explanation=explanation,
-            confidence=round(confidence, 2),
+            explanation=reasoning.explanation,
+            confidence=round(reasoning.confidence, 2),
             safety_status=policy.status,
             escalation_condition=(
                 "Escalate immediately if temperature exceeds 85 C, smoke is observed, "
@@ -93,6 +105,8 @@ class GridRecallDemoService:
             ),
             evidence=[item.as_evidence() for item in influential],
             avoided_actions=avoided,
+            reasoning_provider=reasoning.provider,
+            model_id=reasoning.model_id,
         )
 
     def run_first_incident(self) -> DemoState:
@@ -238,5 +252,17 @@ class GridRecallDemoService:
         )
 
 
-def build_demo_service() -> GridRecallDemoService:
-    return GridRecallDemoService()
+def build_demo_service(settings: Settings | None = None) -> GridRecallDemoService:
+    settings = settings or get_settings()
+    if not settings.bedrock_reasoning_model_id:
+        return GridRecallDemoService()
+    embeddings = BedrockTitanEmbeddingProvider(
+        region=settings.aws_region,
+        model_id=settings.bedrock_embedding_model_id,
+        dimensions=1024,
+    )
+    reasoner = BedrockNovaReasoner(
+        region=settings.aws_region,
+        model_id=settings.bedrock_reasoning_model_id,
+    )
+    return GridRecallDemoService(embeddings=embeddings, reasoner=reasoner)
