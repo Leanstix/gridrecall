@@ -20,8 +20,8 @@ flowchart TD
 | Memory type | Durable content | Prototype state |
 |---|---|---|
 | Working | Current incident, telemetry snapshot and workflow version | Implemented in the demo service |
-| Episodic | Previous fault, attempted actions and measured outcome | Implemented |
-| Semantic | Site, asset and equipment configuration | Seeded simulator profiles |
+| Episodic | Previous fault, attempted actions and measured outcome | Durable CockroachDB records |
+| Semantic | Site, asset and equipment configuration | CockroachDB plus Managed MCP reads |
 | Procedural | Approved actions, qualification rules and escalation limits | Implemented policy engine |
 | Human | Technician decision, observation and correction | Represented in repair attempts |
 
@@ -50,15 +50,17 @@ The production retriever ranks safe, resolved cases using:
 
 The local adapter uses stable hash embeddings so the demonstration and tests need no credentials.
 The Bedrock adapter invokes Amazon Titan Text Embeddings V2 for normalized 1024-dimensional
-vectors. CockroachDB's cosine-distance operator will perform production retrieval.
+vectors. CockroachDB's cosine-distance operator performs production retrieval through an index
+prefixed by asset model and fault type.
 
 ## Bedrock reasoning contract
 
-Amazon Nova receives the current incident, telemetry snapshot, retrieved outcome memories, the
-retrieval engine's candidate action and actions known to have failed. It must return JSON containing
-an action, explanation and numeric confidence. The backend validates that JSON and rejects an action
-unless it is the retrieval candidate or escalation. The deterministic policy engine then validates
-qualification and requires human approval; model output cannot waive that requirement.
+Amazon Nova receives the current incident, telemetry snapshot, retrieved outcome memories, a
+read-only Managed MCP evidence query, the retrieval engine's candidate action and actions known to
+have failed. It must return JSON containing an action, explanation and numeric confidence. The
+backend validates that JSON and rejects an action unless it is the retrieval candidate or escalation.
+The deterministic policy engine then validates qualification and requires human approval; model
+output cannot waive that requirement.
 
 ## Safety boundary
 
