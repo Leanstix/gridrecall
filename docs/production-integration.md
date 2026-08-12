@@ -14,7 +14,7 @@ cp .env.example .env
 ```
 
 ```dotenv
-DATABASE_URL="postgresql://.../gridrecall?sslmode=verify-full..."
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:26257/gridrecall?sslmode=verify-full&sslrootcert=system"
 AWS_REGION=us-east-1
 BEDROCK_REASONING_MODEL_ID=us.amazon.nova-lite-v1:0
 BEDROCK_EMBEDDING_MODEL_ID=amazon.titan-embed-text-v2:0
@@ -25,6 +25,12 @@ COCKROACH_MCP_API_KEY=your-service-account-api-key
 
 The MCP service account should be scoped to the GridRecall cluster and granted read access only.
 Application writes use the validated SQL transaction layer, not MCP.
+
+`sslrootcert=system` tells Psycopg/libpq to verify CockroachDB Cloud with the trusted certificate
+authorities already installed by the operating system. Do not change `sslmode` to `disable`: the
+cloud cluster requires encrypted connections, and disabling verification also removes server
+identity protection. If the URL already contains query parameters, append the TLS options with `&`
+instead of starting another `?`.
 
 ## Install and migrate
 
@@ -84,7 +90,9 @@ The health response must report `demo_mode: false` and all three integration fla
 
 | Failure | Likely cause |
 |---|---|
-| Database connection or certificate error | Incorrect `DATABASE_URL` or CA certificate path |
+| Missing `~/.postgresql/root.crt` | Add `sslrootcert=system` while keeping `sslmode=verify-full` |
+| `server requires encryption` | `sslmode` was disabled; restore `sslmode=verify-full` |
+| Other database connection error | Incorrect host, user, password, database, or network access |
 | Vector feature or index error | Cluster is older than v25.4 or SQL user lacks migration authority |
 | MCP 401/403 | Invalid API key or insufficient service-account scope |
 | MCP table/query error | Migration was not run against the `gridrecall` database |
