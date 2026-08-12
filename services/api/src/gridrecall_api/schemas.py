@@ -93,6 +93,7 @@ class Recommendation(BaseModel):
     avoided_actions: list[ActionType] = Field(default_factory=list)
     reasoning_provider: str = "case-based-local"
     model_id: str | None = None
+    managed_context_used: bool = False
 
 
 class IncidentMemory(BaseModel):
