@@ -82,6 +82,7 @@ class MemoryEvidence(BaseModel):
 
 
 class Recommendation(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
     action: ActionType
     title: str
     explanation: str
